@@ -9,7 +9,7 @@ export default defineConfig({
       // We use '/api' as a proxy prefix.
       // Any request starting with '/api' will be forwarded.
       '/api': {
-        target: 'http://127.0.0.1:5000', // Local Flask backend server's address
+        target: 'http://127.0.0.1:5001', // Local Flask backend server's address
         changeOrigin: true, // Recommended for virtual hosted sites
         rewrite: (path) => path.replace(/^\/api/, ''), // Removes '/api' from the forwarded request
       },

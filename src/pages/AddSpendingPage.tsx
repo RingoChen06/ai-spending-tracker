@@ -5,98 +5,130 @@ import {
   Box,
   ToggleButton,
   ToggleButtonGroup,
+  Typography,
+  Paper,
+  MenuItem,
+  Alert,
+  CircularProgress,
+  Snackbar,
 } from "@mui/material";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import EditIcon from "@mui/icons-material/Edit";
 import Webcam from "react-webcam";
-import styles from "./AddSpendingPage.module.css"; // Import the CSS module
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../firebase";
+import { useAuth } from "../hooks/useAuth";
+import { SPENDING_CATEGORIES } from "../types";
 import { addTransaction, receiptScan } from "../api/api";
 
 const AddSpendingPage = () => {
+  const { isAuthenticated } = useAuth();
   const [date, setDate] = useState("");
   const [merchantName, setMerchantName] = useState("");
-  const [uploadMode, setUploadMode] = useState<"manual" | "camera">("manual"); // State for upload mode
+  const [uploadMode, setUploadMode] = useState<"manual" | "camera">("manual");
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState(0.0);
+  const [note, setNote] = useState("");
   const [additionalInfo, setAdditionalInfo] = useState("");
-  const [authenticated, setIsAuthenticated] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Webcam related state
+  // Snackbar state
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">("success");
+
   const videoConstraints = {
     width: 1920,
     height: 1080,
     facingMode: "environment",
   };
   const webcamRef = useRef<Webcam>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
-  const handleSubmit = () => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCapturedImage(reader.result as string);
+      setIsCameraOpen(false);
+    };
+    reader.readAsDataURL(file);
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+  };
+
+  const showSnackbar = (message: string, severity: "success" | "error") => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
+  };
+
+  const handleSubmit = async () => {
     if (uploadMode === "camera") {
       if (capturedImage) {
-        receiptScan(capturedImage.replace("data:image/jpeg;base64,", ""))
-          .then((response) => {
-            console.log("Receipt scan response:", response);
-            const responseString = response.response;
-            const jsonStartIndex = responseString.indexOf("{");
-            const jsonEndIndex = responseString.lastIndexOf("}");
-            const jsonString = responseString.substring(
-              jsonStartIndex,
-              jsonEndIndex + 1
-            );
-            const parsedObject = JSON.parse(jsonString);
+        setIsScanning(true);
+        try {
+          // Strip any data URL prefix (works for jpeg, png, webp, etc.)
+          const base64Data = capturedImage.includes(",")
+            ? capturedImage.split(",")[1]
+            : capturedImage;
+          const response = await receiptScan(base64Data);
+          const responseString = response.response;
+          const jsonStartIndex = responseString.indexOf("{");
+          const jsonEndIndex = responseString.lastIndexOf("}");
+          const jsonString = responseString.substring(
+            jsonStartIndex,
+            jsonEndIndex + 1
+          );
+          const parsedObject = JSON.parse(jsonString);
 
-            setDate(parsedObject.date);
-            setMerchantName(parsedObject.merchantName);
-            setCategory(parsedObject.category);
-            setAmount(parsedObject.amount);
-            setAdditionalInfo("Details from scanned receipt (Edit if needed).");
-          })
-          .catch((error) => {
-            console.error("Error scanning receipt:", error);
-          });
-        // Switch to manual mode for user review and final submission
-        setUploadMode("manual");
-        // The capturedImage remains in state and will be submitted with the manual form.
-        // isCameraOpen should already be false if an image was captured.
+          setDate(parsedObject.date);
+          setMerchantName(parsedObject.merchantName);
+          setCategory(parsedObject.category);
+          setAmount(parsedObject.amount);
+          setAdditionalInfo("Details from scanned receipt (Edit if needed).");
+          setUploadMode("manual");
+          showSnackbar("Receipt scanned successfully!", "success");
+        } catch (error) {
+          console.error("Error scanning receipt:", error);
+          showSnackbar("Failed to scan receipt. Please try again or enter manually.", "error");
+        } finally {
+          setIsScanning(false);
+        }
       } else {
-        // This case is ideally prevented by disabling the submit button if no image is captured.
-        alert("Please capture an image first or switch to Manual Upload.");
-        console.warn("Submit clicked in camera mode without a captured image.");
+        showSnackbar("Please capture an image first or switch to Manual Entry.", "error");
       }
     } else if (uploadMode === "manual") {
-      // This is the final submission (either purely manual or after camera pre-fill)
-
-      addTransaction(date, merchantName, category, amount);
-      console.log("Submitting form data:", {
-        date,
-        merchantName,
-        category,
-        amount,
-        additionalInfo,
-        // Include the capturedImage if it exists (i.e., if this submission originated from a camera scan)
-        capturedImage: capturedImage,
-      });
-
-      // TODO: Implement actual data upload to a backend or state management store
-      alert("Form submitted! Check the console for the data."); // Placeholder feedback
-
-      // Clear form fields and reset state after successful submission
-      setDate("");
-      setMerchantName("");
-      setCategory("");
-      setAmount(0.0);
-      setAdditionalInfo("");
-      setCapturedImage(null); // Clear the captured image after submission
+      if (!date || !merchantName || !category || !amount) {
+        showSnackbar("Please fill in all required fields.", "error");
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        await addTransaction(date, merchantName, category, amount, note || undefined);
+        showSnackbar("Transaction added successfully!", "success");
+        setDate("");
+        setMerchantName("");
+        setCategory("");
+        setAmount(0.0);
+        setNote("");
+        setAdditionalInfo("");
+        setCapturedImage(null);
+      } catch (error) {
+        console.error("Error adding transaction:", error);
+        showSnackbar("Failed to add transaction. Please try again.", "error");
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
-  // Effect to manage camera state when switching modes
   useEffect(() => {
     if (uploadMode === "manual") {
-      setIsCameraOpen(false); // Ensure camera is closed if switching to manual mode
-      // We no longer clear capturedImage here, as it's needed if switching from camera to manual for pre-fill.
-      // It will be cleared after the final submission.
+      setIsCameraOpen(false);
     }
   }, [uploadMode]);
 
@@ -105,163 +137,236 @@ const AddSpendingPage = () => {
     newMode: "manual" | "camera" | null
   ) => {
     if (newMode !== null) {
-      // A mode must be selected
       setUploadMode(newMode);
     }
   };
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setIsAuthenticated(true);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  if (!authenticated) {
-    return <p>Please login to view this page</p>;
+  if (!isAuthenticated) {
+    return (
+      <Box sx={{ textAlign: "center", mt: 4 }}>
+        <Typography variant="h6" color="text.secondary">
+          Please login to view this page
+        </Typography>
+      </Box>
+    );
   }
 
   return (
-    <>
-      <h2>Add New Spending</h2>
+      <Box sx={{ p: { xs: 2, md: 3 } }}>
+        <Typography variant="h4" component="h2" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+          Add New Spending
+        </Typography>
 
-      <ToggleButtonGroup
-        value={uploadMode}
-        exclusive
-        onChange={handleUploadModeChange}
-        fullWidth
-        aria-label="upload mode button group"
-        className={styles.modeButtonGroup}
-      >
-        <ToggleButton value="manual" aria-label="manual upload">
-          Manual Upload
-        </ToggleButton>
-        <ToggleButton value="camera" aria-label="camera scan">
-          Camera Scan
-        </ToggleButton>
-      </ToggleButtonGroup>
-
-      <div className={styles.FormContainer}>
-        {uploadMode === "manual" && (
-          <>
-            <TextField
-              label="Date"
-              fullWidth
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-            <TextField
-              label="Merchant Name"
-              fullWidth
-              value={merchantName}
-              onChange={(e) => setMerchantName(e.target.value)}
-            />
-            <TextField
-              label="Category"
-              fullWidth
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            />
-            <TextField
-              label="Amount"
-              fullWidth
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(parseFloat(e.target.value))}
-            />
-            <TextField
-              label="Additional Info (Optional)"
-              fullWidth
-              multiline
-              rows={3}
-              value={additionalInfo}
-              onChange={(e) => setAdditionalInfo(e.target.value)}
-            />
-          </>
-        )}
-
-        {uploadMode === "camera" && (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              alignItems: "center",
-            }}
-          >
-            {!isCameraOpen && !capturedImage && (
-              <Button
-                variant="outlined"
-                fullWidth
-                className={styles.cameraButton}
-                onClick={() => setIsCameraOpen(true)}
-              >
-                Open Camera
-              </Button>
-            )}
-
-            {isCameraOpen && !capturedImage && (
-              <>
-                <Webcam
-                  audio={false}
-                  ref={webcamRef}
-                  screenshotFormat="image/jpeg"
-                  width="100%"
-                  videoConstraints={videoConstraints}
-                  className={styles.webcamFeed}
-                />
-                <Button
-                  variant="contained"
-                  onClick={() => {
-                    const imageSrc = webcamRef.current?.getScreenshot();
-                    if (imageSrc) {
-                      setCapturedImage(imageSrc);
-                      setIsCameraOpen(false); // Hide camera after capture
-                    }
-                  }}
-                  fullWidth
-                >
-                  Take Photo
-                </Button>
-              </>
-            )}
-
-            {capturedImage && (
-              <>
-                <img
-                  src={capturedImage}
-                  alt="Captured"
-                  className={styles.capturedImagePreview}
-                />
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    setCapturedImage(null);
-                    setIsCameraOpen(true);
-                  }}
-                  fullWidth
-                >
-                  Retake Photo
-                </Button>
-              </>
-            )}
-          </Box>
-        )}
-
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          className={styles.submitButton} // Using class from CSS module
-          disabled={uploadMode === "camera" && !capturedImage}
+        <ToggleButtonGroup
+          value={uploadMode}
+          exclusive
+          onChange={handleUploadModeChange}
+          fullWidth
+          aria-label="upload mode button group"
+          sx={{ mb: 3, transition: 'all 0.15s ease' }}
         >
-          Submit
-        </Button>
-      </div>
-    </>
+          <ToggleButton value="manual" aria-label="manual upload" disabled={isScanning}>
+            <EditIcon sx={{ mr: 1 }} />
+            Manual Entry
+          </ToggleButton>
+          <ToggleButton value="camera" aria-label="camera scan" disabled={isScanning}>
+            <CameraAltIcon sx={{ mr: 1 }} />
+            Scan Receipt
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <Paper elevation={2} sx={{ p: 3 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {uploadMode === "manual" && (
+            <>
+              {additionalInfo && (
+                <Alert severity="info" sx={{ mb: 1 }}>
+                  {additionalInfo}
+                </Alert>
+              )}
+              <TextField
+                label="Date"
+                fullWidth
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                required
+              />
+              <TextField
+                label="Merchant Name"
+                fullWidth
+                value={merchantName}
+                onChange={(e) => setMerchantName(e.target.value)}
+                required
+              />
+              <TextField
+                label="Category"
+                fullWidth
+                select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                required
+              >
+                {SPENDING_CATEGORIES.map((cat) => (
+                  <MenuItem key={cat} value={cat}>
+                    {cat}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Amount ($)"
+                fullWidth
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(parseFloat(e.target.value))}
+                slotProps={{ input: { inputProps: { step: "0.01", min: "0" } } }}
+                required
+              />
+              <TextField
+                label="Note (optional)"
+                fullWidth
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                multiline
+                rows={2}
+              />
+            </>
+          )}
+
+          {uploadMode === "camera" && (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                alignItems: "center",
+              }}
+            >
+              {!isCameraOpen && !capturedImage && !isScanning && (
+                <Box sx={{ display: "flex", gap: 2, width: "100%" }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => setIsCameraOpen(true)}
+                    startIcon={<CameraAltIcon />}
+                  >
+                    Open Camera
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => fileInputRef.current?.click()}
+                    startIcon={<UploadFileIcon />}
+                  >
+                    Upload File
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={handleFileUpload}
+                  />
+                </Box>
+              )}
+
+              {isCameraOpen && !capturedImage && (
+                <>
+                  <Webcam
+                    audio={false}
+                    ref={webcamRef}
+                    screenshotFormat="image/jpeg"
+                    width="100%"
+                    videoConstraints={videoConstraints}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      const imageSrc = webcamRef.current?.getScreenshot();
+                      if (imageSrc) {
+                        setCapturedImage(imageSrc);
+                        setIsCameraOpen(false);
+                      }
+                    }}
+                    fullWidth
+                  >
+                    Take Photo
+                  </Button>
+                </>
+              )}
+
+              {capturedImage && !isScanning && (
+                <>
+                  <Box
+                    component="img"
+                    src={capturedImage}
+                    alt="Captured"
+                    sx={{ width: "100%", borderRadius: 1 }}
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setCapturedImage(null);
+                    }}
+                    fullWidth
+                  >
+                    Remove Image
+                  </Button>
+                </>
+              )}
+
+              {isScanning && (
+                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, py: 4 }}>
+                  <CircularProgress size={60} thickness={4} />
+                  <Typography variant="body1" color="text.secondary">
+                    Scanning receipt with AI...
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={
+              isScanning ||
+              isSubmitting ||
+              (uploadMode === "camera" && !capturedImage)
+            }
+            fullWidth
+            size="large"
+            sx={{ mt: 2 }}
+          >
+            {isScanning
+              ? "Scanning..."
+              : isSubmitting
+              ? "Adding..."
+              : uploadMode === "camera"
+              ? "Process Receipt"
+              : "Add Transaction"}
+          </Button>
+        </Box>
+      </Paper>
+
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={4000}
+        onClose={() => setSnackbarOpen(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        sx={{ mb: 7 }}
+      >
+        <Alert
+          onClose={() => setSnackbarOpen(false)}
+          severity={snackbarSeverity}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 };
 export default AddSpendingPage;

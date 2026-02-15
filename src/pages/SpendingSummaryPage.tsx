@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../firebase";
+import { useState, useEffect } from "react";
 import {
   Tabs,
   Tab,
@@ -10,13 +8,20 @@ import {
   List,
   ListItem,
   ListItemText,
+  CircularProgress,
+  Fade,
+  Slide,
+  Chip,
 } from "@mui/material";
-import styles from "./SpendingSummaryPage.module.css";
+import {
+  TrendingUp,
+  AccountBalanceWallet,
+} from "@mui/icons-material";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { getSpendingSummary } from "../api/api";
+import { useAuth } from "../hooks/useAuth";
 
-interface SpendingSummaryProps {
-  // You can define props here if needed, e.g., transaction data
-}
+const COLORS = ["#1976d2", "#42a5f5", "#90caf9", "#bbdefb", "#64b5f6", "#1e88e5", "#0d47a1", "#e3f2fd"];
 
 const convertTabValue = (tabValue: number) => {
   switch (tabValue) {
@@ -31,9 +36,9 @@ const convertTabValue = (tabValue: number) => {
   }
 };
 
-const SpendingSummaryPage: React.FC<SpendingSummaryProps> = () => {
-  const [tabValue, setTabValue] = useState(0); // 0: Daily, 1: Weekly, 2: Monthly
-  const [authenticated, setIsAuthenticated] = useState(false);
+const SpendingSummaryPage = () => {
+  const { isAuthenticated } = useAuth();
+  const [tabValue, setTabValue] = useState(0);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [totalSpent, setTotalSpent] = useState(0);
   const [topCategories, setTopCategories] = useState<
@@ -44,32 +49,8 @@ const SpendingSummaryPage: React.FC<SpendingSummaryProps> = () => {
   >([]);
   const [insightsAndSuggestions, setInsightsAndSuggestions] = useState("");
 
-  // 1. useEffect that runs once on component startup (mount)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setIsAuthenticated(true);
-        getSpendingSummary(convertTabValue(tabValue))
-          .then((response) => {
-            setTotalSpent(response.totalSpent);
-            setTopCategories(response.topCategories);
-            setInsightsAndSuggestions(response.insights);
-            setIsDataLoading(false);
-            console.log("Spending summary response:", response);
-          })
-          .catch((error) => {
-            console.error("Error fetching spending summary:", error);
-          });
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // 2. useEffect that runs whenever the `tabValue` state changes
-  useEffect(() => {
-    const tabName = ["Daily", "Weekly", "Monthly"][tabValue];
-    console.log(`Tab selection changed to: ${tabName}. Refetching data...`);
+    if (!isAuthenticated) return;
     setIsDataLoading(true);
 
     getSpendingSummary(convertTabValue(tabValue))
@@ -78,30 +59,45 @@ const SpendingSummaryPage: React.FC<SpendingSummaryProps> = () => {
         setTopCategories(response.topCategories);
         setInsightsAndSuggestions(response.insights);
         setIsDataLoading(false);
-        console.log("Spending summary response:", response);
       })
       .catch((error) => {
         console.error("Error fetching spending summary:", error);
         setIsDataLoading(false);
       });
-  }, [tabValue]);
+  }, [isAuthenticated, tabValue]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
-  if (!authenticated) {
-    return <p>Please login to view this page</p>;
+  if (!isAuthenticated) {
+    return (
+      <Box sx={{ textAlign: "center", mt: 4 }}>
+        <Typography variant="h6" color="text.secondary">
+          Please login to view this page
+        </Typography>
+      </Box>
+    );
   }
 
   return (
-    <div className={styles.container}>
-      {/* Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      {/* Tabs with clean styling */}
+      <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
           aria-label="Spending summary tabs"
+          centered
+          sx={{
+            '& .MuiTab-root': {
+              fontWeight: 600,
+              fontSize: '1rem',
+              textTransform: 'none',
+              minHeight: 56,
+              transition: 'all 0.15s ease',
+            },
+          }}
         >
           <Tab label="Daily" />
           <Tab label="Weekly" />
@@ -109,55 +105,136 @@ const SpendingSummaryPage: React.FC<SpendingSummaryProps> = () => {
         </Tabs>
       </Box>
 
-      {/* Content based on selected tab */}
+      {/* Content with smooth transitions */}
       {isDataLoading ? (
-        <p>Loading spending summary...</p>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: 400,
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          <CircularProgress size={60} thickness={4} />
+          <Typography variant="body1" color="text.secondary">
+            Loading spending summary...
+          </Typography>
+        </Box>
       ) : (
-        <Box sx={{ p: 3 }}>
-          {/* The content below is currently static. It can be updated based on the tabValue state. */}
-          <Box sx={{ textAlign: "left" }}>
+        <Fade in={!isDataLoading} timeout={250}>
+          <Box sx={{ p: { xs: 2, md: 3 } }}>
             {/* Total Spent Card */}
-            <Paper elevation={3} sx={{ p: 2, mb: 3 }}>
-              <Typography variant="h6" component="h3" gutterBottom>
-                Total Spent (USD)
-              </Typography>
-              <Typography
-                variant="h4"
-                component="p"
-                sx={{ fontWeight: "bold" }}
-              >
-                ${totalSpent.toFixed(2)}
-              </Typography>
-            </Paper>
+            <Slide direction="down" in={!isDataLoading} timeout={200}>
+              <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <AccountBalanceWallet color="primary" />
+                  <Typography variant="h6" component="h3" sx={{ fontWeight: 500 }}>
+                    Total Spent (USD)
+                  </Typography>
+                </Box>
+                <Typography
+                  variant="h3"
+                  component="p"
+                  sx={{ fontWeight: 'bold', letterSpacing: '-0.02em', color: 'primary.main' }}
+                >
+                  ${totalSpent.toFixed(2)}
+                </Typography>
+              </Paper>
+            </Slide>
 
-            {/* Top Categories */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" component="h3" gutterBottom>
-                Top Categories
-              </Typography>
-              <List dense sx={{ p: 0 }}>
-                {topCategories.map((cat, index) => (
-                  <ListItem key={index} disableGutters sx={{ p: 0 }}>
-                    <ListItemText primary={cat.category} />
-                    <Typography variant="body1" sx={{ fontWeight: "medium" }}>
-                      ${cat.total_amount}
-                    </Typography>
-                  </ListItem>
-                ))}
-              </List>
-            </Box>
+            {/* Pie Chart + Top Categories */}
+            <Slide direction="up" in={!isDataLoading} timeout={250}>
+              <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <TrendingUp color="primary" />
+                  <Typography variant="h6" component="h3" sx={{ fontWeight: 600 }}>
+                    Top Categories
+                  </Typography>
+                </Box>
+
+                {topCategories.length > 0 && (
+                  <Box sx={{ width: '100%', height: 180, mb: 2 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={topCategories.map((cat) => ({
+                            name: cat.category,
+                            value: cat.total_amount,
+                          }))}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={85}
+                          paddingAngle={3}
+                          dataKey="value"
+                          label={false}
+                        >
+                          {topCategories.map((_cat, index) => (
+                            <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: any) => `$${Number(value).toFixed(2)}`}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </Box>
+                )}
+                <List sx={{ p: 0 }}>
+                  {topCategories.map((cat, index) => (
+                    <Fade
+                      in={!isDataLoading}
+                      timeout={300 + index * 30}
+                      key={index}
+                    >
+                      <ListItem
+                        sx={{
+                          py: 1.5,
+                          px: 0,
+                          borderBottom: index < topCategories.length - 1 ? 1 : 0,
+                          borderColor: 'divider',
+                        }}
+                      >
+                        <Chip
+                          label={index + 1}
+                          size="small"
+                          color="primary"
+                          sx={{ mr: 2, fontWeight: 'bold' }}
+                        />
+                        <ListItemText
+                          primary={cat.category}
+                          primaryTypographyProps={{
+                            fontWeight: 500,
+                            fontSize: '1rem',
+                          }}
+                        />
+                        <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                          ${cat.total_amount.toFixed(2)}
+                        </Typography>
+                      </ListItem>
+                    </Fade>
+                  ))}
+                </List>
+              </Paper>
+            </Slide>
 
             {/* Insights & Suggestions */}
-            <Box>
-              <Typography variant="h6" component="h3" gutterBottom>
-                Insights & Suggestions
-              </Typography>
-              <Typography variant="body1">{insightsAndSuggestions}</Typography>
-            </Box>
+            <Slide direction="up" in={!isDataLoading} timeout={300}>
+              <Paper elevation={2} sx={{ p: 3 }}>
+                <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+                  Insights & Suggestions
+                </Typography>
+                <Typography variant="body1" sx={{ lineHeight: 1.7 }}>
+                  {insightsAndSuggestions}
+                </Typography>
+              </Paper>
+            </Slide>
           </Box>
-        </Box>
+        </Fade>
       )}
-    </div>
+    </Box>
   );
 };
 

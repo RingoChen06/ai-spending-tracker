@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import HomePage from "./pages/HomePage";
-import TransactionPage from "./pages/TransactionPage";
-import AddSpendingPage from "./pages/AddSpendingPage";
-import SpendingSummaryPage from "./pages/SpendingSummaryPage";
-import { Paper, BottomNavigation, BottomNavigationAction } from "@mui/material";
+import HomePage from "../../pages/HomePage";
+import TransactionPage from "../../pages/TransactionPage";
+import AddSpendingPage from "../../pages/AddSpendingPage";
+import SpendingSummaryPage from "../../pages/SpendingSummaryPage";
+import { Paper, BottomNavigation, BottomNavigationAction, Container } from "@mui/material";
 import {
   Home as HomeIcon,
   ReceiptLong as ReceiptLongIcon,
@@ -51,12 +51,14 @@ const Viewport = () => {
     <>
       {/* Main Content */}
       <main className="main-content">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/transactions" element={<TransactionPage />} />
-          <Route path="/add-spending" element={<AddSpendingPage />} />
-          <Route path="/spending-summary" element={<SpendingSummaryPage />} />
-        </Routes>
+        <Container maxWidth="sm" sx={{ px: { xs: 0, sm: 2 } }}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/transactions" element={<TransactionPage />} />
+            <Route path="/add-spending" element={<AddSpendingPage />} />
+            <Route path="/spending-summary" element={<SpendingSummaryPage />} />
+          </Routes>
+        </Container>
       </main>
 
       {/* Botton Nav Bar */}

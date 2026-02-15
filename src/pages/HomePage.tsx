@@ -1,76 +1,106 @@
-import { useState, useEffect } from "react";
 import {
-  type User,
-  onAuthStateChanged,
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
 } from "firebase/auth";
 import { auth } from "../firebase";
-import reactLogo from "../assets/react.svg";
-import viteLogo from "/vite.svg";
-import "../Viewport.css";
+import { Box, Button, Typography, Paper, Avatar, CircularProgress, Fade } from "@mui/material";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import GoogleIcon from "@mui/icons-material/Google";
+import { useAuth } from "../hooks/useAuth";
 
 function HomePage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
-
-    // Cleanup subscription on unmount
-    return () => unsubscribe();
-  }, []);
+  const { user, isLoading } = useAuth();
 
   const handleGoogleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-      // onAuthStateChanged will handle setting the user
     } catch (error) {
       console.error("Error during Google sign-in:", error);
-      // Handle errors here, such as displaying a notification to the user
     }
   };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      // onAuthStateChanged will handle setting the user to null
     } catch (error) {
       console.error("Error during sign-out:", error);
     }
   };
 
-  if (loading) {
-    return <p>Loading authentication status...</p>;
+  if (isLoading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "calc(100vh - 70px)", flexDirection: "column", gap: 2 }}>
+        <CircularProgress size={60} thickness={4} />
+        <Typography variant="body1" color="text.secondary">Loading...</Typography>
+      </Box>
+    );
   }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Welcome to AI Spending Tracker</h1>
-      <div className="card">
-        {user ? (
-          <>
-            <p>Hello, {user.displayName || user.email}!</p>
-            <button onClick={handleLogout}>Logout</button>
-          </>
-        ) : (
-          <button onClick={handleGoogleLogin}>Login with Google</button>
-        )}
-      </div>
-    </>
+    <Fade in={!isLoading} timeout={300}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "calc(100vh - 70px)",
+          px: 2,
+        }}
+      >
+        <AccountBalanceWalletIcon sx={{ fontSize: 80, color: "primary.main", mb: 2 }} />
+
+        <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 700, textAlign: "center" }}>
+          AI Spending Tracker
+        </Typography>
+
+        <Typography variant="h6" color="text.secondary" sx={{ mb: 4, textAlign: "center", maxWidth: 500 }}>
+          Track your expenses smartly with AI-powered receipt scanning and intelligent insights
+        </Typography>
+
+        <Paper elevation={2} sx={{ p: 3, minWidth: 300 }}>
+          {user ? (
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              {user.photoURL && (
+                <Avatar src={user.photoURL} sx={{ width: 64, height: 64 }} />
+              )}
+              <Typography variant="h6" sx={{ textAlign: "center" }}>
+                Welcome back!
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ textAlign: "center" }}>
+                {user.displayName || user.email}
+              </Typography>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={handleLogout}
+                fullWidth
+                sx={{ mt: 2 }}
+              >
+                Logout
+              </Button>
+            </Box>
+          ) : (
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              <Typography variant="body1" sx={{ textAlign: "center", mb: 1 }}>
+                Sign in to start tracking your spending
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={handleGoogleLogin}
+                startIcon={<GoogleIcon />}
+                fullWidth
+                sx={{ py: 1.5 }}
+              >
+                Sign in with Google
+              </Button>
+            </Box>
+          )}
+        </Paper>
+      </Box>
+    </Fade>
   );
 }
 export default HomePage;

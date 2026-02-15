@@ -13,8 +13,8 @@ instance.interceptors.request.use(
     const user = auth.currentUser;
     if (user) {
       try {
-        // Firebase automatically handles token refreshing.
-        const token = await user.getIdToken();
+        // Firebase automatically handles token refreshing with force refresh if needed
+        const token = await user.getIdToken(true); // Force refresh token
         config.headers.Authorization = `Bearer ${token}`;
       } catch (error) {
         console.error("Error getting auth token: ", error);
@@ -23,6 +23,36 @@ instance.interceptors.request.use(
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add a response interceptor to handle 401 errors and retry with refreshed token
+instance.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If error is 401 and we haven't retried yet
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const user = auth.currentUser;
+        if (user) {
+          // Force refresh the token
+          const newToken = await user.getIdToken(true);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
+          // Retry the original request with new token
+          return instance(originalRequest);
+        }
+      } catch (refreshError) {
+        console.error("Error refreshing token: ", refreshError);
+        return Promise.reject(refreshError);
+      }
+    }
+
     return Promise.reject(error);
   }
 );
@@ -41,7 +71,8 @@ export const addTransaction = async (
   date: string,
   merchantName: string,
   category: string,
-  amount: number
+  amount: number,
+  note?: string
 ) => {
   try {
     const response = await instance.post("/transactions", {
@@ -49,6 +80,7 @@ export const addTransaction = async (
       merchantName,
       category,
       amount,
+      ...(note && { note }),
     });
     return response.data;
   } catch (error) {
@@ -63,6 +95,29 @@ export const receiptScan = async (image_data: string) => {
     return response.data;
   } catch (error) {
     console.error("Error scanning receipt: ", error);
+    throw error;
+  }
+};
+
+export const deleteTransaction = async (id: string) => {
+  try {
+    const response = await instance.delete(`/transactions/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error deleting transaction: ", error);
+    throw error;
+  }
+};
+
+export const updateTransaction = async (
+  id: string,
+  data: { date?: string; merchantName?: string; category?: string; amount?: number; note?: string }
+) => {
+  try {
+    const response = await instance.put(`/transactions/${id}`, data);
+    return response.data;
+  } catch (error) {
+    console.error("Error updating transaction: ", error);
     throw error;
   }
 };

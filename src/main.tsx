@@ -1,7 +1,7 @@
 import { StrictMode, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import Viewport from "./Viewport.tsx";
+import Viewport from "./components/layout/Viewport";
 import { BrowserRouter } from "react-router-dom";
 import {
   ThemeProvider,
